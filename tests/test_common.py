@@ -84,7 +84,7 @@ class TestCommonClient(unittest.TestCase):
             _LOGGER.exception("Could not cleanup temporary repository path: [%s]", self.__temp_repo_path)
 
     def __stage_co_directory_1(self):
-        """Establish a new file, an added file, a committed file, a changed file, and an ignored file."""
+        """Establish some history, a new file, an added file, a committed file, a changed file, and an ignored file."""
 
         # Create a file that will not be committed.
 
@@ -133,7 +133,24 @@ class TestCommonClient(unittest.TestCase):
 
         # Commit the new files.
 
+        rev = 0
         self.__temp_lc.commit("Initial commit.")
+        rev += 1
+
+        # Add some history
+        filepath = os.path.join(self.__temp_co_path, 'newfile')
+        with open(filepath, mode='w') as f:
+            f.writelines(['line1\n', 'line2\n'])
+        self.__temp_lc.add(filepath)
+        self.__temp_lc.commit("Add a file", [filepath])
+        rev += 1
+        self.local_test_start_revision = rev
+        with open(filepath, mode="a") as f:
+            f.writelines(['line3\n', 'line4\n'])
+        self.__temp_lc.commit("Add more content", [filepath])
+        rev += 1
+        self.local_test_end_revision = rev
+
 
         # Do an update to pick-up the changes from the commit.
 
@@ -206,9 +223,11 @@ class TestCommonClient(unittest.TestCase):
 
     def test_update(self):
         self.__stage_co_directory_1()
-        self.__temp_lc.commit("Second commit.")
+        rev = self.local_test_end_revision
+        self.__temp_lc.commit("Another commit.")
+        rev += 1
         self.__temp_lc.update()
-        self.assertEqual(2, self.__temp_lc.info()['commit_revision'])
+        self.assertEqual(rev, self.__temp_lc.info()['commit_revision'])
         self.__temp_lc.update(revision=1)
         self.assertEqual(1, self.__temp_lc.info()['commit_revision'])
 
@@ -238,9 +257,9 @@ class TestCommonClient(unittest.TestCase):
             actual_answer == diff_summary or \
             actual_answer == diff_summary_2)
 
-    def test_diff(self):
+    def test_diff_https(self):
         """
-        Checking diff
+        Checking diff for CommonClient (https://)
         :return:
         """
         cc = self.__get_cc()
@@ -266,6 +285,24 @@ class TestCommonClient(unittest.TestCase):
                             in individual_diff[diff_key] or \
                         'http://svn.apache.org/repos/asf/sling/trunk/pom.xml' \
                             in individual_diff[diff_key])
+
+    def test_diff_local(self):
+        """
+        Checking diff for LocalClient (file://)
+        :return:
+        """
+        self.__stage_co_directory_1()
+        l = self.__temp_lc
+        actual_answer = \
+            l.diff(self.local_test_start_revision, self.local_test_end_revision)
+
+        for index, individual_diff in enumerate(actual_answer):
+            # diff and path should exist.
+            diff = individual_diff['diff']
+            path = individual_diff['path']
+            self.assertTrue(path.endswith('/newfile'), '__setup_test_environment added a file called newfile')
+            self.assertTrue('line3' in diff, '__setup_test_environment added "line3"')
+            self.assertTrue('line4' in diff, '__setup_test_environment added "line4"')
 
     def test_diff_separator(self):
         """
