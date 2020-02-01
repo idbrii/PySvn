@@ -516,25 +516,34 @@ class CommonClient(svn.common_base.CommonBase):
         # file name, then split again to pick up the content.
         for non_empty_diff in filter(None, diff_result.decode('utf8').split('Index: ')):
             split_diff = non_empty_diff.split('='*67)
-            index_filename = split_diff[0].strip().strip('/')
+            assert len(split_diff) == 2, 'Diffs should all be the Index label and the diff.'
+
+            fullpath = split_diff[0].strip()
+            # Strip trailing / off of directories.
+            index_filename = split_diff[0].strip().rstrip('/')
             file_to_diff[index_filename] = split_diff[-1].strip()
+
         diff_summaries = self.diff_summary(old, new, rel_path)
 
         # Allocate summary info to the text for each change.
         # Not all diffs necessarily affect file text (directory changes, for example).
         for diff_summary in diff_summaries:
-            diff_summary['diff'] = ''
+
             if 'path' in diff_summary:
-                # Summary file paths are absolute, while diff file indexes are relative.
-                # We try to match them up, first checking the root of the diff.
-                summary_index = diff_summary['path'][len(full_url_or_path):].strip('/')
-                # If the diff was conducted directly on the file, not a directory, the
+                # Summary file paths are absolute, while diff file indexes
+                # absolute for file:// repos and relative for remote repos.
+                summary_index = diff_summary['path']
+                if summary_index not in file_to_diff:
+                    # Fallback the root directory where we did the diff.
+                    summary_index = summary_index[len(full_url_or_path):].rstrip('/')
+                # If the diff was conducted directly on a remote file, not a directory, the
                 # above will fail to find the relative file name, so we look for that directly.
                 if summary_index == '':
                     summary_index = os.path.basename(full_url_or_path)
                 # If we can match a diff to a summary, we attach it.
                 if summary_index in file_to_diff:
                     diff_summary['diff'] = file_to_diff[summary_index]
+
         return diff_summaries
 
     @property
